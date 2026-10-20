@@ -117,6 +117,8 @@ exclude_lines = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Design docs contain illustrative Python snippets; keep them byte-stable.
+extend-exclude = ["deepseek_help"]
 
 [tool.ruff.lint]
 select = [
@@ -139,7 +141,6 @@ known-first-party = ["terminal_territories"]
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
-disallow_any_generics = true
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true

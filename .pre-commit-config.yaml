@@ -1,0 +1,38 @@
+# Install once per clone:
+#   pip install -e ".[dev]"
+#   pre-commit install
+#
+# Run on demand:
+#   pre-commit run --all-files
+#
+# Bump the ruff hook periodically:
+#   pre-commit autoupdate
+
+repos:
+  # Ruff runs in its own environment, so linting does not require the
+  # project's runtime dependencies to be installed.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+      - id: ruff-format
+        name: ruff (format)
+
+  # Mypy must see the project's real dependencies (FastAPI, Textual, Pydantic,
+  # SQLAlchemy...), so it runs in the developer's environment rather than an
+  # isolated one. Activate the virtualenv, or run pre-commit from it.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (type-check)
+        entry: python -m mypy
+        language: system
+        types_or: [python, pyi]
+        files: ^terminal_territories/
+        # Check whole modules, not just changed files, so mypy resolves the
+        # package consistently. Add "tests" to args once that directory exists.
+        pass_filenames: false
+        require_serial: true
+        args: [terminal_territories]

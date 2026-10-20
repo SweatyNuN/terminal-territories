@@ -311,6 +311,17 @@ optional extras by phase:
 `requirements.txt` is redundant once `pyproject.toml` exists. Keep it as a
 one-line shim (`-e .`) or delete it, but do not maintain two dependency lists.
 
+After installing the `dev` extra, enable the hooks once per clone:
+
+```bash
+pip install -e ".[dev]"
+pre-commit install
+pre-commit run --all-files
+```
+
+Ruff runs in the hook's own environment; mypy runs in the project environment
+so it can see real types from FastAPI, Textual and Pydantic.
+
 ---
 
 ## 10. Architectural decisions worth writing down (ADRs)
