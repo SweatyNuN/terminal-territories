@@ -1,6 +1,6 @@
 """Tests for the grid starter app."""
 
-from terminal_territories.client.main import GridApp, GridView
+from terminal_territories.client.experiments.textual import GridApp, GridView
 
 
 def test_render_marks_the_player_position() -> None:
