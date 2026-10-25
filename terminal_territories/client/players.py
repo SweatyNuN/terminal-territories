@@ -3,6 +3,7 @@ from dataclasses import dataclass, replace
 
 @dataclass(frozen=True)
 class Player:
+    id: int
     name: str
     letter: str
     x: int
