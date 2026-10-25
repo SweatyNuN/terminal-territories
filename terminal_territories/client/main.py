@@ -10,8 +10,8 @@ import terminal_territories.core.state as state
 def main():
     input.start_input()
     gameState = state.GameState()
-    player_1 = players.Player(id=1, name="alex", letter="a", x=0, y=0)
-    player_2 = players.Player(id=2, name="slade", letter="s", x=7, y=11)
+    player = players.Player(id=1, name="alex", letter="a", x=0, y=0)
+    player2 = players.Player(id=2, name="slade", letter="s", x=7, y=11)
     try:
         while True:
             key = input.get_key()
@@ -30,27 +30,28 @@ def main():
                 draw.draw_game(draw.get_main_menu())
             if gameState.screen == state.Screens.PLAYING:
                 # Player 1 controls, turn consuming
-                if player_1.action is players.Actions.MOVE:
+                if player.action is players.Actions.MOVE:
                     if key == "i":
-                        player_1 = players.up(player_1)
+                        player = players.up(player)
                     if key == "k":
-                        player_1 = players.down(player_1)
+                        player = players.down(player)
                     if key == "j":
-                        player_1 = players.left(player_1)
+                        player = players.left(player)
                     if key == "l":
-                        player_1 = players.right(player_1)
+                        player = players.right(player)
                     # Player 1 contextual controls
                     if key == "e":
-                        players.set_action(player_1, players.Actions.EXPAND)
+                        player = players.set_action(player, players.Actions.EXPAND)
                     if key == "a":
-                        players.set_action(player_1, players.Actions.ATTACK)
+                        player = players.set_action(player, players.Actions.ATTACK)
                     if key == "f":
-                        players.set_action(player_1, players.Actions.FORTIFY)
+                        player = players.set_action(player, players.Actions.FORTIFY)
+                else:
+                    if key == "m":
+                        player = players.set_action(player, players.Actions.MOVE)
 
                 # Player 2 debug for local testing maybe make it the ai eventually
-                draw.draw_game(
-                    draw.get_grid(gameState.grid, player_1, player_2), show_controls=True
-                )
+                draw.draw_game(draw.get_grid(gameState.grid, player, player2), player)
             sleep(0.1)  # 10 FPS
     finally:
         input.stop_input()

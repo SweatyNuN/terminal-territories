@@ -9,6 +9,11 @@ class Actions(Enum):
     FORTIFY = 3
 
 
+class Controls(Enum):
+    MOVE = "[Q]uit, [E]xpand, [A]ttack, [F]ortify, IJKL = Move Directions"
+    COLONISE = "[Q]uit, [M]ove, IJKL = Expand/Attack/Fortify Direction"
+
+
 @dataclass(frozen=True)
 class Player:
     id: int
@@ -17,6 +22,7 @@ class Player:
     x: int
     y: int
     action: Actions = Actions.MOVE
+    controls: Controls = Controls.MOVE
 
 
 def up(player: Player) -> Player:
@@ -44,4 +50,8 @@ def right(player: Player) -> Player:
 
 
 def set_action(player: Player, action: Actions) -> Player:
-    return replace(player, action=action)
+    controls = Controls.COLONISE
+    if action == Actions.MOVE:
+        controls = Controls.MOVE
+
+    return replace(player, action=action, controls=controls)

@@ -33,12 +33,6 @@ Press number to enter option
     """
 
 
-def _get_controls():
-    return """\n
-[Q]uit, [E]xpand, [A]ttack, [F]ortify, IJKL = Directions
-    """
-
-
 def get_grid(grid: Grid, player_1: Player, player_2: Player) -> str:
     grid_string = ""
     for x, row in enumerate(grid):
@@ -74,12 +68,12 @@ def _draw(ui: str):
 
 
 # TODO: Add some styling to text and spacing depending on terminal size
-def draw_game(ui: str, show_controls: bool = False):
+def draw_game(ui: str, player: Player | None = None):
     _clear()
     _draw(_get_title_bar())
     _draw(ui)
-    if show_controls is True:
-        _draw(_get_controls())
+    if player is not None:
+        _draw(player.controls.value)
 
 
 def _clear():
