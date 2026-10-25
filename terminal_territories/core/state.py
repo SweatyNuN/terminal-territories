@@ -2,6 +2,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from terminal_territories.core.exceptions import InvalidAction
+from terminal_territories.core.players import Player
 
 
 class Terrain(Enum):
@@ -14,7 +15,7 @@ class Terrain(Enum):
 
 @dataclass(frozen=True)
 class GameCell:
-    owner: int = 0
+    owner: Player | None = None
     terrain: Terrain = Terrain.PLAINS
 
 
@@ -43,7 +44,17 @@ def set_screen(gameState: GameState, screen: Screens) -> GameState:
     return replace(gameState, screen=screen)
 
 
-def set_cell(gameState: GameState, x: int, y: int, cell: GameCell) -> GameState:
+def get_cell(gameState: GameState, x: int, y: int) -> GameCell:
+    if not (0 <= y < len(gameState.grid) and 0 <= x < len(gameState.grid[y])):
+        raise InvalidAction(f"cell ({x}, {y}) out of bounds")
+    return gameState.grid[x][y]
+
+
+def set_cell_owner(cellState: GameCell, player: Player) -> GameCell:
+    return replace(cellState, owner=player)
+
+
+def set_grid(gameState: GameState, x: int, y: int, cell: GameCell) -> GameState:
     if not (0 <= y < len(gameState.grid) and 0 <= x < len(gameState.grid[y])):
         raise InvalidAction(f"cell ({x}, {y}) out of bounds")
 

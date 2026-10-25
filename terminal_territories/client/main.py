@@ -49,6 +49,22 @@ def main():
                 else:
                     if key == "m":
                         player = players.set_action(player, players.Actions.MOVE)
+                    if key == "i":
+                        cellState = state.get_cell(gameState, player.x, player.y)
+                        cellState = state.set_cell_owner(cellState, player)
+                        gameState = state.set_grid(gameState, player.x, player.y - 1, cellState)
+                    if key == "k":
+                        cellState = state.get_cell(gameState, player.x, player.y)
+                        cellState = state.set_cell_owner(cellState, player)
+                        gameState = state.set_grid(gameState, player.x, player.y + 1, cellState)
+                    if key == "j":
+                        cellState = state.get_cell(gameState, player.x, player.y)
+                        cellState = state.set_cell_owner(cellState, player)
+                        gameState = state.set_grid(gameState, player.x - 1, player.y, cellState)
+                    if key == "l":
+                        cellState = state.get_cell(gameState, player.x, player.y)
+                        cellState = state.set_cell_owner(cellState, player)
+                        gameState = state.set_grid(gameState, player.x + 1, player.y, cellState)
 
                 # Player 2 debug for local testing maybe make it the ai eventually
                 draw.draw_game(draw.get_grid(gameState.grid, player, player2), player)

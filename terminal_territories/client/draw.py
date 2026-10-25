@@ -35,17 +35,19 @@ Press number to enter option
 
 def get_grid(grid: Grid, player_1: Player, player_2: Player) -> str:
     grid_string = ""
-    for x, row in enumerate(grid):
+    for y, row in enumerate(grid):
         row_string = ""
-        for y, cell in enumerate(row):
+        for x, cell in enumerate(row):
             # Render Player
             if player_1.x == x and player_1.y == y:
                 row_string += str(player_1.id)
             elif player_2.x == x and player_2.y == y:
                 row_string += str(player_2.id)
             else:
-                # If no player render terrain
-                if cell.terrain == Terrain.PLAINS:
+                # If no player render terrain or owner
+                if cell.owner is not None:
+                    row_string += cell.owner.letter
+                elif cell.terrain == Terrain.PLAINS:
                     row_string += Terrain.PLAINS.value
                     # Index debug
                     # row_string += f"({x}{y}),"
