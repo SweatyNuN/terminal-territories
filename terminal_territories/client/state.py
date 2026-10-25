@@ -1,11 +1,26 @@
 from dataclasses import dataclass, field, replace
 from enum import Enum
 
-Grid = tuple[tuple[str, ...], ...]
+
+class Terrain(Enum):
+    PLAINS = "."
+    FOREST = "f"
+    HILLS = "h"
+    RUINS = "r"
+    WATER = "~"
+
+
+@dataclass(frozen=True)
+class GameCell:
+    terrain: Terrain = Terrain.PLAINS
+    owner = None
+
+
+Grid = tuple[tuple[GameCell, ...], ...]
 
 
 def _empty_grid() -> Grid:
-    return tuple(tuple("." for _ in range(8)) for _ in range(12))
+    return tuple(tuple(GameCell() for _ in range(12)) for _ in range(8))
 
 
 class Screens(Enum):
