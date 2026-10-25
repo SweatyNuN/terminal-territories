@@ -1,15 +1,22 @@
-import sys, tty, termios, select
+import select
+import sys
+import termios
+import tty
+from typing import Any
 
 _fd = sys.stdin.fileno()
 _old_settings = termios.tcgetattr(_fd)
 
+
 def start_input():
     tty.setcbreak(_fd)
+
 
 def stop_input():
     termios.tcsetattr(_fd, termios.TCSADRAIN, _old_settings)
 
-def get_key():
+
+def get_key() -> str | Any | None:
     if select.select([sys.stdin], [], [], 0)[0]:
         ch = sys.stdin.read(1)
         if ch == "\x1b":  # ESC — probably an arrow key sequence

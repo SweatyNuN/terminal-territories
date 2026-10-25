@@ -1,34 +1,30 @@
 from time import sleep
 
-from terminal_territories.client.input import get_key, start_input, stop_input
-from terminal_territories.client.draw import draw_grid, main_menu, welcome_screen, clear
-from terminal_territories.client.state import GameState
+import terminal_territories.client.draw as draw
+import terminal_territories.client.input as input
+import terminal_territories.client.state as state
+
 
 def main():
-    start_input()
-    last_key = None
-    gameState = GameState()
+    input.start_input()
+    gameState = state.GameState()
     try:
         while True:
-            key = get_key()
-            if key is not None:
-                last_key = key
+            key = input.get_key()
             if key == "e":
-                gameState.welcome_screen = True
-                gameState.main_menu = True
+                gameState = state.set_screen(gameState, state.Screens.MENU)
             if key == "2":
-                gameState.main_menu = False
-                gameState.playing = True
-            clear()
-            if gameState.welcome_screen is False:
-                welcome_screen()
-            if gameState.main_menu is True:
-                main_menu()
-            if gameState.playing is True:
-                draw_grid(gameState.grid)
-            sleep(0.1) # 10 FPS
+                gameState = state.set_screen(gameState, state.Screens.PLAYING)
+            draw.clear()
+            if gameState.screen == state.Screens.WELCOME:
+                draw.draw_game(draw.get_welcome_screen())
+            if gameState.screen == state.Screens.MENU:
+                draw.draw_game(draw.get_main_menu())
+            if gameState.screen == state.Screens.PLAYING:
+                draw.draw_game(draw.get_grid(gameState.grid))
+            sleep(0.1)  # 10 FPS
     finally:
-        stop_input()
+        input.stop_input()
 
 
 if __name__ == "__main__":

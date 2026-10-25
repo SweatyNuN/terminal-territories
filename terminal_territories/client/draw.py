@@ -1,20 +1,36 @@
 import sys
 
-def welcome_screen():
-    print("Terminal Territories")
-    print("Press E to continue....")
-
-def main_menu():
-    print("Main Menu")
-    print("1. Join Game")
-    print("2. Create Game")
+from terminal_territories.client.state import Grid
 
 
-def draw_grid(grid):
+def get_welcome_screen():
+    return """
+Terminal Territories
+Press E to continue....
+    """
+
+
+def get_main_menu():
+    return """
+Main Menu
+1. Join Game
+2. Create Game
+    """
+
+
+def get_grid(grid: Grid):
+    grid_string = ""
     for row in grid:
+        row_string = ""
         for cell in row:
-            print(cell)
-        print("\n")
+            row_string += cell
+        grid_string += row_string + "\n"
+    return grid_string
+
+
+def draw_game(ui: str):
+    print(ui)
+
 
 def clear():
     sys.stdout.write("\033[H\033[2J")  # home cursor + erase screen
