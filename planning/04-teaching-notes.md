@@ -57,7 +57,7 @@ Use this when a student asks "why are we learning this?"
 | Week | Content | Deliverable |
 | --- | --- | --- |
 | 1 | Phase 0 | Tested rules engine + hot-seat play |
-| 2 | Phase 1 | REST server + Textual client |
+| 2 | Phase 1 | REST server + ANSI terminal client |
 | 3 | Phase 2 | SQLite persistence + migrations |
 | 4 | Phase 3 | Auth, fog of war, conflict handling |
 | 5 | Phase 4 | WebSocket updates + reconnect |
@@ -80,6 +80,8 @@ untested combat.
 
 - Write a failing test for a rule that is not implemented, then implement it.
 - Break the renderer by swapping `x` and `y`. Show why non-square maps catch it.
+- Build one ANSI frame as a list of lines, then write it with home + erase-to-end.
+  Compare against a full clear and explain the flicker.
 - Ask: why is `apply_action` returning a new state instead of changing one?
 
 **Phase 1**
@@ -88,6 +90,10 @@ untested combat.
 - Deliberately send malformed JSON and map every status code.
 - Write a client in `curl` only, with no Python, to prove the API is the
   contract.
+- Parse `\x1b[A` without swallowing the next keystroke. Test a lone `ESC`, a
+  partial sequence, and an arrow key pressed twice quickly.
+- Time one render and one poll at a 20 FPS cap. What is the frame budget, and
+  what must never run inside it?
 
 **Phase 2**
 
@@ -105,6 +111,8 @@ untested combat.
 
 - Instrument request counts before/after push.
 - Add an artificial 3-second server delay: what should the UI show?
+- Move the network call onto a worker thread and drain a bounded queue. Prove
+  that input and rendering stay responsive during the delay.
 - Disconnect the client mid-turn and compare local and server state.
 
 **Phase 5**
@@ -124,6 +132,8 @@ untested combat.
 - Ask: which commands can be duplicated safely, and which cannot? Relate it to
   HTTP methods and idempotency.
 - Compare game feel at 10 Hz vs 30 Hz snapshots.
+- Run the Pygame client with `SDL_VIDEODRIVER=dummy`; assert interpolation and
+  overlay counters without opening a window.
 
 **Phase 8**
 
@@ -154,6 +164,12 @@ untested combat.
 | Read-modify-write without a version check | Lost updates, optimistic concurrency |
 | Retrying a POST without an idempotency key | Double-spend, at-least-once delivery |
 | `time.sleep` in an async handler | Blocking the event loop |
+| Clearing the screen after drawing | ANSI ordering, flicker, frame diffing |
+| Blocking HTTP/socket call in the render loop | Worker threads, queues, frame budgets |
+| Missing terminal restore on crash | `finally`, signals, terminal lifecycle |
+| Unbounded event queue | Backpressure, memory, coalescing |
+| Busy-wait redraw loop | Dirty flags, frame caps, idle waits |
+| Sharing mutable state across threads | Immutable events, single-owner state |
 | `recv(4096)` assumed to be one message | Stream framing, partial reads |
 | Full state broadcast on every event | Deltas, bandwidth, backpressure |
 | Global mutable game dict without a lock | Races across awaits, per-game locks |
@@ -204,7 +220,7 @@ in a route handler.
 ### Demo script for the end of the course
 
 1. Create a game with a fixed seed; show the seed.
-2. Two players join, one plays through the Textual client, one through `curl`.
+2. Two players join: one uses the ANSI terminal client, one uses `curl`.
 3. Capture a capital; show elimination and neutralisation of the loser's tiles.
 4. Restart the server; rejoin and continue.
 5. Toggle fog: show two clients seeing different maps.

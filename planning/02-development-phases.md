@@ -26,13 +26,13 @@ Suggested effort assumes a 2–3 hour session per "session" block.
 | Phase | Sessions | Demo at the end |
 | --- | --- | --- |
 | 0 | 2 | Hot-seat game in one terminal, rules fully tested |
-| 1 | 2–3 | Two terminals, one server, REST client |
+| 1 | 2–3 | Two terminals, one server, ANSI REST client |
 | 2 | 2 | Restart the server mid-game and keep playing |
 | 3 | 2 | Two clients see different maps |
 | 4 | 2 | Moves appear without pressing a key |
 | 5 | 2 | Two-player alliance blocks an attack |
-| 6 | 2–3 | Same game over a length-prefixed TCP socket |
-| 7 | 3 | Packet-loss demo, client recovers |
+| 6 | 2–3 | Same terminal client over length-prefixed TCP |
+| 7 | 3 | Pygame client survives packet loss |
 | 8 | 2 | Resource nodes and upkeep change strategy |
 | 9 | 2 | Four bots play a tournament unattended |
 | 10 | 3+ | Services restart independently, game survives |
@@ -57,11 +57,15 @@ testing, seeded randomness, ASCII rendering, the command pattern.
    implementing expand, fortify, attack, end turn. Raise typed domain errors,
    never string exceptions.
 5. `core/scoring.py`: territory percentage, standings, elimination checks.
-6. `client/render.py`: ASCII renderer for a single board plus a status panel.
-   This renderer is reused in tests and in the Phase 1 CLI client.
-7. `client/hotseat.py`: loop that renders the board, asks for a command and
-   calls `apply_action`. No sockets. This is the reference implementation of
-   the game.
+6. `client/render.py`: pure state → frame data functions for the board, HUD
+   and status panel; `client/ansi.py` serialises that data into escape
+   sequences. Nothing here does I/O. The terminal client, the Phase 7 Pygame
+   view and the tests all consume the same `ClientState` and frame data.
+7. `client/app.py` + `client/hotseat.py`: a minimal ANSI terminal shell with
+   alternate screen, key-at-a-time input and `try/finally` restoration. In
+   hot-seat mode it renders the board, asks for a command and calls
+   `apply_action`. No sockets. This is the reference implementation of the
+   game.
 8. Tests:
    - golden test for a known seed (board hash, capital positions);
    - one test per legality checklist rule;
@@ -122,16 +126,21 @@ request validation, client/server split, stateless requests, error taxonomies.
 4. Map domain errors to HTTP: `400` malformed, `403` not your turn/no
    permission, `404` unknown game, `409` illegal action in current state,
    `422` schema validation (FastAPI default).
-5. `client/api.py`: `httpx` client that speaks the same DTOs.
-6. `client/app.py`: Textual UI with a board widget, status panel, command
-   input, and 1-second polling. Show the connection state and last error.
+5. `client/session/base.py`: the synchronous `Session` facade (`send`,
+   `drain_events`, `close`). `client/session/rest.py` implements it over
+   `httpx` on a worker thread; the UI never imports `httpx`.
+6. `client/app.py`: the custom ANSI terminal client — alternate screen,
+   non-blocking key polling, board/status/command screens, a 1-second polling
+   timer, and connection/error status. Polling sends a command and drains
+   events; it never blocks the render loop.
 7. Integration tests: spin up the app with `httpx.ASGITransport`, play a
    scripted game over HTTP.
 
 **Definition of done**
 
-- Two Textual clients on one server can complete a game.
+- Two terminal clients on one server can complete a game.
 - The client never computes legality; it displays the server's error.
+- The terminal is restored on normal exit and on a server error.
 - OpenAPI docs at `/docs` explain every endpoint well enough for a classmate
   to write a client from them.
 
@@ -250,8 +259,11 @@ async server.
 
 3. Keep REST for commands initially. Move commands onto the socket in a second
    step and compare error handling and latency.
-4. Client: a background task feeds deltas into a local store; the Textual app
-   rerenders from the store. Add an "optimistic" toggle later in Phase 7.
+4. Client: a network worker thread owns the socket and pushes immutable events
+   into a bounded `queue.Queue`. The main thread drains input and the queue,
+   reduces them into `ClientState`, and renders on change at a capped frame
+   rate. No socket call runs on the render thread. Add optimistic rendering
+   only in Phase 7.
 5. Reconnect: exponential backoff, `since_version` on resubscribe, server
    sends missed events or a fresh snapshot.
 6. Heartbeat ping/pong; drop dead connections. Test with a client that never
@@ -265,6 +277,8 @@ async server.
 - A move appears on the opponent's screen without input.
 - Killing the socket mid-game reconnects and converges to the same state.
 - No state divergence after a 20-round test game with random disconnects.
+- The UI stays responsive during a 3-second server delay; the event queue
+  stays bounded.
 - Server stays responsive with at least 10 concurrent clients.
 
 **Pitfalls:** broadcasting the full state on every event; per-connection
@@ -329,15 +343,18 @@ shutdown, slow clients.
 3. Server: `asyncio.start_server`, one task per connection, a shared game
    registry with an `asyncio.Lock` per game. Reuse `core` and the existing
    handlers — this phase must not duplicate rules.
-4. Client: `asyncio.open_connection`, a reader task and a writer queue.
+4. Client: `TcpSession` behind the same `Session` facade. A reader thread
+   parses length-prefixed frames into the event queue; a writer queue
+   serialises commands. `--transport http|ws|tcp` switches adapters, not the
+   UI. `asyncio` is fine on the server; the terminal client does not need it.
 5. Tests: send half a header, then the rest; send two frames in one `send`;
    kill the connection mid-frame. All three are classic framing bugs.
-6. Keep HTTP alongside TCP behind `--transport http|tcp` in the client, so the
-   comparison is honest.
+6. Keep HTTP and WebSocket alongside TCP behind `--transport http|ws|tcp` in
+   the client, so the comparison is honest.
 
 **Definition of done**
 
-- A full game over TCP with the Textual client.
+- A full game over TCP with the terminal client.
 - The framing test suite passes against a deliberately flaky byte stream.
 - No blocking `recv` inside async code; no unbounded per-connection buffers.
 - README documents the wire format with a hexdump example.
@@ -371,13 +388,19 @@ deltas, client prediction, reconciliation, jitter, MTU.
    - client retries after 200 ms with exponential backoff;
    - server deduplicates by `(player, seq)` (this is Phase 3's idempotency
      lesson, now unavoidable).
-4. Client:
+4. Pygame client (`client/visual/`):
+   - a 60 FPS render loop with 10 Hz UDP snapshots and a two-snapshot
+     interpolation buffer;
    - sequence-number gap detection → request a keyframe or ignore stale
      snapshots;
    - timestamped snapshots for interpolation;
    - optimistic local render of your own action, then reconcile against the
      next authoritative snapshot, rolling back on mismatch;
-   - a debug overlay: tick, last ack, packet loss estimate, correction count.
+   - a network worker thread and bounded queue behind the shared `Session`
+     facade;
+   - a tile grid, HUD, event log and mouse/keyboard selection;
+   - a debug overlay: tick, last ack, packet loss estimate, correction count,
+     queue depth and FPS.
 5. Chaos tools: an in-process `LossyProxy` (`drop=10%`, `duplicate=5%`,
    `reorder=5%`, `delay=50ms ± 20ms`) plus a UI toggle. Every test runs through
    the proxy at least once.
@@ -387,9 +410,13 @@ deltas, client prediction, reconciliation, jitter, MTU.
 **Definition of done**
 
 - A 5-minute real-time match survives 10% loss and 50 ms jitter.
+- The Pygame client renders at 60 FPS from 10 Hz snapshots and stays smooth
+  between them.
 - The debug overlay reports corrections, and they trend to zero when the
   network is clean.
 - Killing packets for 2 seconds does not permanently desynchronise the client.
+- Headless Pygame tests pass with `SDL_VIDEODRIVER=dummy`.
+- The terminal client still plays the Phase 6 game.
 - Rules tests from Phase 0 still pass untouched.
 
 **Pitfalls:** sending authoritative state only in deltas (a lost keyframe

@@ -10,7 +10,8 @@ transport does**. Every phase after 1 is a change at the edge.
 ```mermaid
 flowchart TB
     subgraph Edge
-        UI[Textual client]
+        TERM[Terminal client]
+        VIS[Pygame client]
         BOT[Bots]
     end
     subgraph Protocols
@@ -28,7 +29,8 @@ flowchart TB
     subgraph Domain
         CORE["core: rules, board, scoring, vision"]
     end
-    UI --> P
+    TERM --> P
+    VIS --> P
     BOT --> P
     P --> REST
     P --> WS
@@ -46,13 +48,18 @@ flowchart TB
 Dependency rule, enforced by review and (optionally) an import-linter check:
 
 - `core` may import Python standard library only. Not Pydantic, not FastAPI,
-  not Textual, not SQLAlchemy.
+  not any UI toolkit (Textual, Pygame, Rich), not SQLAlchemy.
 - `protocol` may import `core` types and Pydantic.
 - `server` may import `core` and `protocol`.
 - `client` may import `protocol` (and `core` for rendering helpers, never for
   deciding legality). The one exception is `client/hotseat.py`, which acts as
   the referee in Phase 0 and may call `apply_action`; it is deleted or kept as
   a dev tool once the server exists.
+- Only `client/session/` may import transport libraries (`httpx`, `websockets`,
+  `socket`, `asyncio`). Screens and renderers never do.
+- Only `client/visual/` may import `pygame`.
+- Textual lives only under `client/experiments/`; do not import it from
+  `client/`.
 - Nothing imports `client`.
 
 If a rule needs the database, it is not a rule.
@@ -66,7 +73,7 @@ terminal-territories/
 ├── pyproject.toml
 ├── README.md
 ├── human_notes.md
-├── deepseek_help/
+├── planning/
 └── terminal_territories/
     ├── __init__.py
     ├── core/                 # pure domain
@@ -95,13 +102,16 @@ terminal-territories/
     │   ├── udp.py            # UDP snapshot loop (v7)
     │   └── routes/
     ├── client/
-    │   ├── app.py            # Textual App
-    │   ├── screens/          # lobby, game, standings
-    │   ├── widgets/          # board, status, log
-    │   ├── api.py            # REST/WS/TCP transport clients
-    │   ├── store.py          # local view of authoritative state
-    │   ├── render.py         # state -> text (shared with tests)
-    │   └── hotseat.py        # Phase 0 local game
+    │   ├── app.py            # terminal main loop; owns state and render
+    │   ├── state.py          # ClientState + pure reducer
+    │   ├── render.py         # pure frame/layout functions
+    │   ├── ansi.py           # escape sequences, cursor, alt screen
+    │   ├── input.py          # key adapter (cbreak/raw, escape parsing)
+    │   ├── screens/          # welcome, menu, lobby, game, help, standings
+    │   ├── session/          # Session facade + REST/WS/TCP/UDP adapters
+    │   ├── hotseat.py        # Phase 0 local referee
+    │   ├── visual/           # Pygame client (Phase 7)
+    │   └── experiments/      # raw.py, textual.py prototypes
     └── bots/                 # v9
         ├── client.py
         ├── heuristic.py
@@ -215,41 +225,89 @@ reader.
 
 ## 5. Transport abstraction
 
-Define the seam once so Phase 6 and 7 are not rewrites:
+Define the seam once so Phase 6 and 7 are not rewrites. The UI sees a
+**synchronous** facade:
 
 ```python
-class GameSession(Protocol):
-    async def join(self, game_id: str, token: str) -> Snapshot: ...
-    async def send(self, command: Command) -> Ack: ...
-    async def stream(self) -> AsyncIterator[Event]: ...
+class Session(Protocol):
+    def send(self, command: Command) -> Ack: ...
+    def drain_events(self) -> list[Event]: ...
+    def close(self) -> None: ...
 ```
 
-`RestSession`, `WebSocketSession`, `TcpSession` and `UdpSession` implement it.
-The Textual app talks to a `GameSession`, so switching transport is a
-constructor argument. If the UI knows which transport it is using, the seam is
-in the wrong place.
+`send` enqueues the command and returns immediately with
+`Ack(status="queued", command_id=...)`; the authoritative accept/reject arrives
+as an event from `drain_events`. `drain_events` only drains a queue. This keeps
+`async` out of screens and unit tests without ever blocking the render thread.
+
+Each adapter owns its I/O:
+
+| Adapter | I/O owner |
+| --- | --- |
+| `HotseatSession` | None; calls `apply_action` directly |
+| `RestSession` | Worker thread running `httpx`, plus a polling timer |
+| `WebSocketSession` | Reader thread; reconnect/backoff inside the adapter |
+| `TcpSession` | Reader thread + writer queue for framed messages |
+| `UdpSession` | Reader thread for snapshots/acks + send loop |
+
+The terminal client and the Pygame client both talk to a `Session`, so
+switching transport is a constructor argument. If the UI knows which transport
+it is using, the seam is in the wrong place.
 
 ---
 
-## 6. Client architecture (Textual)
+## 6. Client architecture
 
-- **Screens:** `LobbyScreen` (games, join/create), `GameScreen` (board, status,
-  log, input), `StandingsScreen`.
-- **Store:** a single source of truth mirroring the server view. Widgets read
-  from it and subscribe to changes; they never call the network directly.
-- **Worker:** one async task owns the `GameSession` and writes into the store.
-  UI events post commands to a queue; the worker sends them.
-- **Commands:** a command palette (`e` expand, `a` attack, `f` fortify,
-  `space` end turn) with a coordinate prompt. Keyboard-first, mouse optional.
+Two clients, one interaction model. Both own a `ClientState`, reduce immutable
+events, and never compute legality.
+
+### 6.1 Terminal client (Phases 0–6)
+
+- **Loop:** `client/app.py` owns `ClientState` and rendering. A network worker
+  thread pushes immutable events into a bounded `queue.Queue`; the loop drains
+  input and the queue, reduces, and renders on change at a capped frame rate.
+  Timers use `time.monotonic()`. No HTTP or socket call runs on the render
+  thread.
+- **Screens:** `client/screens/` is a state machine over a `Screen` enum:
+  welcome, menu, lobby, game, help, standings. No pile of independent booleans.
+- **State:** `ClientState` (a view model, not `core.GameState`) and a pure
+  `reduce(state, event_or_key) -> ClientState`. The network thread never touches
+  it; it only enqueues immutable events.
+- **Rendering:** `render.py` builds frames as data; `ansi.py` owns escape
+  sequences, alternate screen, cursor movement and size handling. Prefer
+  home-and-pad plus erase-to-end over clearing every frame.
+- **Input:** `input.py` turns bytes into logical keys, including arrow escape
+  sequences and a lone `ESC`. It restores termios in `finally`.
+- **Session:** only `client/session/` imports transport libraries. The UI
+  imports the `Session` protocol and a factory.
+- **Commands:** `e` expand, `a` attack, `f` fortify, `space` end turn, with a
+  coordinate prompt. Keyboard-first, mouse optional.
 - **Errors:** a persistent status line shows the last server error code and a
-  friendly message; a rejected action must never crash the app.
-- **Optimistic rendering (v7 only):** apply a predicted change, mark it
+  safe message; a rejected action must never crash the app.
+- **Optimistic rendering (Phase 7 only):** apply a predicted change, mark it
   pending, reconcile on the next snapshot, roll back visibly if corrected.
-  Before v7, never guess: render only authoritative state.
+  Before Phase 7, never guess: render only authoritative state.
 
-A plain CLI fallback (`client/cli.py`, stdin + `rich`) is worth keeping for
-headless demos and for testing the server without Textual. That is the place
-for `prompt-toolkit` if you want line editing.
+### 6.2 Pygame client (Phase 7)
+
+- **Scope:** `client/visual/` is used only for the real-time UDP mode. The
+  terminal client remains the reference/debug client.
+- **Loop:** 60 FPS render loop over 10 Hz snapshots, with a two-snapshot
+  interpolation buffer. It shares `ClientState`, the reducer, `render.py`'s
+  frame data, `protocol` and the `Session` facade with the terminal client.
+- **Prediction:** optimistic local render plus reconciliation against the next
+  authoritative snapshot; count and display corrections. No prediction before
+  Phase 7.
+- **Layout:** tile grid, HUD, event log, mouse/keyboard selection and a debug
+  overlay (tick, ack, loss, corrections, queue depth, FPS).
+- **Networking:** the same worker-thread + bounded-queue model. Pygame is an
+  SDL library, not an engine: the loop, camera, UI and assets are still ours.
+- **Testing:** visual modules take a state and a surface; headless tests run
+  with `SDL_VIDEODRIVER=dummy`.
+
+A plain line-mode fallback (`client/cli.py`, stdin + `rich`) is worth keeping
+for headless demos and for driving the server without a terminal UI. That is
+the place for `prompt-toolkit` if you want line editing.
 
 ---
 
@@ -281,6 +339,9 @@ they are design, not deployment.
 | Property | Hypothesis (optional) | Invariants across thousands of random action sequences. |
 | Protocol | pytest + golden JSON | Wire format is stable and round-trips. |
 | Integration | `httpx.ASGITransport` | Routes, status codes, transactions, auth. |
+| Client state | pytest | Reducer transitions, screen state machine, no I/O. |
+| Client render | pytest + golden frames | ANSI layout is stable and terminal-free. |
+| Client visual | pytest + Pygame dummy driver | Interpolation, overlay and draw logic without a window. |
 | Transport | real sockets on localhost | Framing, disconnects, partial reads, loss. |
 | End-to-end | scripted games | A full game over the real protocol, deterministic seed. |
 | Load/chaos | custom proxy, locust (stretch) | Slow consumers, 10% loss, reconnects. |
@@ -304,9 +365,15 @@ optional extras by phase:
 | --- | --- | --- |
 | `db` | SQLAlchemy, aiosqlite, Alembic | Phase 2+ |
 | `realtime` | `websockets` (client side; uvicorn already ships a server impl) | Phase 4+ |
+| `visual` | `pygame>=2.6` | Phase 7 Pygame client |
 | `reliability` | Hypothesis (property tests) | Phase 0 stretch |
 | `prompt` | prompt-toolkit | CLI fallback only |
 | `dev` | pytest, pytest-asyncio, pytest-cov, ruff, mypy | every phase |
+
+Textual stays only for the prototype in `client/experiments/`. It is not part
+of the terminal client's runtime path; if the base install is trimmed, move it
+to a `prototype` extra or remove it with the experiment and its tests. Pygame
+is never a base dependency.
 
 `requirements.txt` is redundant once `pyproject.toml` exists. Keep it as a
 one-line shim (`-e .`) or delete it, but do not maintain two dependency lists.
@@ -320,7 +387,8 @@ pre-commit run --all-files
 ```
 
 Ruff runs in the hook's own environment; mypy runs in the project environment
-so it can see real types from FastAPI, Textual and Pydantic.
+so it can see real types from FastAPI, Pydantic and whichever optional client
+toolkit is installed (Textual for the prototype, Pygame with `[visual]`).
 
 ---
 
@@ -336,6 +404,8 @@ Create `docs/adr/000N-title.md` as you decide:
 6. SQLite for the classroom, PostgreSQL for the distributed phase.
 7. Neutral tiles on capital capture (anti-snowball).
 8. One transport seam, four implementations.
+9. Custom ANSI terminal client for Phases 0–6; Pygame only for Phase 7;
+   Textual as a prototype/reference.
 
 Each ADR: context, decision, consequences, what would change your mind. This is
 the highest-value writing exercise in the whole project.

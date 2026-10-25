@@ -50,6 +50,10 @@ realtime = [
 reliability = [
     "hypothesis>=6.100",
 ]
+# Phase 7: Pygame client for the real-time UDP mode (optional, not a default).
+visual = [
+    "pygame>=2.6",
+]
 # Only if you build the non-Textual CLI fallback mentioned in human_notes.md.
 prompt = [
     "prompt-toolkit>=3.0",
@@ -69,11 +73,12 @@ full = [
     "aiosqlite>=0.20",
     "alembic>=1.13",
     "websockets>=13",
+    "pygame>=2.6",
     "hypothesis>=6.100",
     "prompt-toolkit>=3.0",
 ]
 
-# Entry points are added when the modules exist (see deepseek_help/02-development-phases.md):
+# Entry points are added when the modules exist (see planning/02-development-phases.md):
 # [project.scripts]
 # tt = "terminal_territories.cli:main"
 # tt-server = "terminal_territories.server.app:main"
@@ -118,7 +123,7 @@ exclude_lines = [
 line-length = 100
 target-version = "py312"
 # Design docs contain illustrative Python snippets; keep them byte-stable.
-extend-exclude = ["deepseek_help"]
+extend-exclude = ["planning"]
 
 [tool.ruff.lint]
 select = [

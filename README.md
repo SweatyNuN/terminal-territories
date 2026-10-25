@@ -6,7 +6,7 @@
 
 Players connect to a central server and compete to control territory on a shared map.
 
-Everything happens in a terminal window.
+The primary client lives in a terminal window; the final real-time mode adds a Pygame window.
 
 At first it's a simple turn-based game using a REST API. As the project grows, the networking becomes increasingly real-time until juniors are dealing with sockets, server authority, UDP updates, prediction, and synchronisation.
 
@@ -203,7 +203,9 @@ Suggested stack:
 - Python
 - FastAPI
 - SQLite
-- Textual
+- Custom ANSI terminal client
+- Pygame (Phase 7 UDP visual client)
+- Textual (optional prototype only)
 - WebSockets
 - TCP sockets
 - UDP combat mode
