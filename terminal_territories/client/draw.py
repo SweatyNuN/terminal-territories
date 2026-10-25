@@ -4,8 +4,8 @@ import sys
 # Rich text formatting introduces flicker into ghostty and probably other terminals
 # Standard print hasn't shown any flicker yet but will become a problem at some point
 # from rich import print
-from terminal_territories.client.players import Player
-from terminal_territories.client.state import Grid, Terrain
+from terminal_territories.core.players import Player
+from terminal_territories.core.state import Grid, Terrain
 
 
 def _get_title_bar():
@@ -35,7 +35,7 @@ Press number to enter option
 
 def _get_controls():
     return """\n
-[q]uit, wasd = directions
+[Q]uit, [E]xpand, [A]ttack, [F]ortify, IJKL = Directions
     """
 
 

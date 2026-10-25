@@ -3,8 +3,8 @@ from time import sleep
 
 import terminal_territories.client.draw as draw
 import terminal_territories.client.input as input
-import terminal_territories.client.players as players
-import terminal_territories.client.state as state
+import terminal_territories.core.players as players
+import terminal_territories.core.state as state
 
 
 def main():
@@ -29,24 +29,25 @@ def main():
                     gameState = state.set_screen(gameState, state.Screens.PLAYING)
                 draw.draw_game(draw.get_main_menu())
             if gameState.screen == state.Screens.PLAYING:
-                # Player 1 controls
-                if key == "w":
-                    player_1 = players.up(player_1)
-                if key == "s":
-                    player_1 = players.down(player_1)
-                if key == "a":
-                    player_1 = players.left(player_1)
-                if key == "d":
-                    player_1 = players.right(player_1)
+                # Player 1 controls, turn consuming
+                if player_1.action is players.Actions.MOVE:
+                    if key == "i":
+                        player_1 = players.up(player_1)
+                    if key == "k":
+                        player_1 = players.down(player_1)
+                    if key == "j":
+                        player_1 = players.left(player_1)
+                    if key == "l":
+                        player_1 = players.right(player_1)
+                    # Player 1 contextual controls
+                    if key == "e":
+                        players.set_action(player_1, players.Actions.EXPAND)
+                    if key == "a":
+                        players.set_action(player_1, players.Actions.ATTACK)
+                    if key == "f":
+                        players.set_action(player_1, players.Actions.FORTIFY)
+
                 # Player 2 debug for local testing maybe make it the ai eventually
-                if key == "i":
-                    player_2 = players.up(player_2)
-                if key == "k":
-                    player_2 = players.down(player_2)
-                if key == "j":
-                    player_2 = players.left(player_2)
-                if key == "l":
-                    player_2 = players.right(player_2)
                 draw.draw_game(
                     draw.get_grid(gameState.grid, player_1, player_2), show_controls=True
                 )
