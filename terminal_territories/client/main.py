@@ -11,7 +11,7 @@ def main():
     input.start_input()
     gameState = state.GameState()
     player = players.Player(id=1, name="alex", letter="a", x=0, y=0)
-    player2 = players.Player(id=2, name="slade", letter="s", x=7, y=11)
+    player2 = players.Player(id=2, name="slade", letter="s", x=11, y=7)
     try:
         while True:
             key = input.get_key()

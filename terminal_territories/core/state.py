@@ -47,7 +47,7 @@ def set_screen(gameState: GameState, screen: Screens) -> GameState:
 def get_cell(gameState: GameState, x: int, y: int) -> GameCell:
     if not (0 <= y < len(gameState.grid) and 0 <= x < len(gameState.grid[y])):
         raise InvalidAction(f"cell ({x}, {y}) out of bounds")
-    return gameState.grid[x][y]
+    return gameState.grid[y][x]
 
 
 def set_cell_owner(cellState: GameCell, player: Player) -> GameCell:
