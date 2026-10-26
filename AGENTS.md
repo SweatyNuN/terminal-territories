@@ -19,6 +19,7 @@ The owner can implement and explain each phase without the docs dictating the co
 - If a rule decision changes, update `planning/01-game-mechanics.md` and its resolved-decisions table, then check 02 and 05 for references.
 - Do not create a new document without a unique purpose.
 - Prefer editing the canonical document over appending a section that repeats it.
+- `pyproject.toml` lists only dependencies the current phase imports. Future options stay in `PACKAGES.md`; do not move them into `pyproject.toml` until the phase begins.
 
 ## Voice
 
@@ -37,6 +38,7 @@ The owner can implement and explain each phase without the docs dictating the co
 | `planning/03-architecture.md` | Boundaries and invariants | ~130 |
 | `planning/04-learning-notes.md` | Personal learning loop | ~120 |
 | `planning/05-client-plan.md` | Terminal-first client plan | ~110 |
+| `PACKAGES.md` | Future package options (not dependencies) | ~140 |
 | `README.md` | Pitch and project map | ~80 |
 | `planning/README.md` | Design-pack map | ~55 |
 
@@ -48,6 +50,7 @@ Before finishing a doc edit, verify:
 
 - Numbers agree across documents: players, board size, rounds, action points, costs, caps, victory conditions.
 - Every relative link resolves. Do not link to deleted documents.
+- Dependencies in `pyproject.toml` match current imports; future packages are only suggestions in `PACKAGES.md`.
 - No rule is stated twice unless one version is a deliberate summary that links to 01.
 - No code, code file paths, endpoints, status tables, or acceptance criteria crept in.
 - No framing that treats the reader as a group being led.

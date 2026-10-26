@@ -56,11 +56,15 @@ Each phase ends with something playable. The full breakdown, dependencies, and o
 
 ## Stack
 
-- Python 3.12+ and FastAPI
-- SQLite
+The intended stack, added phase by phase:
+
+- Python 3.12+ and the standard library
+- FastAPI and SQLite, once a shared game needs them
 - WebSockets, TCP, and UDP
 - A custom ANSI terminal client
 - Pygame, only for the final real-time mode
+
+The runtime is standard-library-only today. [PACKAGES.md](PACKAGES.md) lists optional future packages and what they are for; nothing there is installed.
 
 ## Docs
 

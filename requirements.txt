@@ -1,1 +1,3 @@
-textual
+# Deprecated: dependencies live in pyproject.toml.
+# Installs the current development environment.
+-e .[dev]

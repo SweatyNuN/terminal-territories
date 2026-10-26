@@ -20,9 +20,9 @@ repos:
       - id: ruff-format
         name: ruff (format)
 
-  # Mypy must see the project's real dependencies (FastAPI, Textual, Pydantic,
-  # SQLAlchemy...), so it runs in the developer's environment rather than an
-  # isolated one. Activate the virtualenv, or run pre-commit from it.
+  # Mypy needs the project's installed dependencies. Today that is only the
+  # retained Textual experiment; later phases add their packages to the dev
+  # extra. Activate the virtualenv, or run pre-commit from it.
   - repo: local
     hooks:
       - id: mypy
@@ -32,7 +32,7 @@ repos:
         types_or: [python, pyi]
         files: ^terminal_territories/
         # Check whole modules, not just changed files, so mypy resolves the
-        # package consistently. Add "tests" to args once that directory exists.
+        # package consistently. Tests are not type-checked by this hook yet.
         pass_filenames: false
         require_serial: true
         args: [terminal_territories]
