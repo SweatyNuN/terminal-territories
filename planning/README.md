@@ -1,65 +1,49 @@
-# Terminal Territories — Design & Teaching Pack
+# Terminal Territories — Design Pack
 
-This folder is the working blueprint for the game: the rules, the build order,
-and the architecture that lets each version grow out of the previous one.
+The design pack for the game. It is implementation-independent: these documents describe the problems, constraints, and decisions that shape the build, not the state of any code.
 
-| Document | What it answers |
+Written for one reader: the person building the game.
+
+## Document map
+
+| Document | Purpose |
 | --- | --- |
-| [01-game-mechanics.md](01-game-mechanics.md) | What exactly happens in a game? Costs, formulas, edge cases, scoring. |
-| [02-development-phases.md](02-development-phases.md) | What do we build next, what do students learn, and when is a phase "done"? |
-| [03-architecture.md](03-architecture.md) | How is the code organised so networking can be swapped without rewriting rules? |
-| [04-teaching-notes.md](04-teaching-notes.md) | Session plans, discussion prompts, common student bugs, assessment. |
-| [05-client-plan.md](05-client-plan.md) | What draws the game, how the client loop works, and when Pygame replaces the terminal. |
+| [01 — Game design](01-game-mechanics.md) | Canonical rules: board, actions, combat, scoring, edge cases. |
+| [02 — Development phases](02-development-phases.md) | The technology progression, each step driven by a gameplay problem. |
+| [03 — Architecture](03-architecture.md) | Layer boundaries and the invariants that keep rules independent of transport. |
+| [04 — Learning notes](04-learning-notes.md) | The personal learning loop: what to notice, try, and revisit. |
+| [05 — Client plan](05-client-plan.md) | Terminal-first rendering, with Pygame only for the real-time mode. |
 
-## The one-paragraph version
+## Reading order
 
-Players take turns expanding across a seeded hex-free grid, spending two
-currencies (action points and resources) to expand, fortify and attack. The
-server owns all state. Version 1 speaks REST/JSON; later versions add
-persistence, fog of war, push updates, alliances, a raw TCP protocol, a
-real-time UDP mode, an economy simulation, bots, and finally a distributed
-service topology — without changing the core rules.
+1. **01 once, end to end.** It is the canonical source for every rule.
+2. **02 for the path.** Pick the next phase and the problem it solves.
+3. **03 before building.** Know the boundaries before adding a layer.
+4. **04 while learning.** Use it to reflect on what a phase actually showed you.
+5. **05 before client work.** Decide what draws the game and how it talks to the server.
 
-## Five design commitments
+## Principles
 
-These are the constraints that make the project teach what it claims to teach.
-Break them only on purpose.
+- **One canonical source per topic.** Rules live in 01. Other documents link to them instead of restating them.
+- **Problems, constraints, decisions.** Documents explain why a design looks the way it does, not how to type it.
+- **Code state is irrelevant.** No progress checklists, no gap tables, no "currently implemented" notes.
+- **Delete duplication.** If two documents say the same thing, keep the better one and remove the other.
+- **Short enough to use.** A document that is not read is not a design document.
 
-1. **Rules engine first, network second.** `terminal_territories/core/` is pure
-   Python: no FastAPI, no UI toolkit, no sockets, no database. Every rule can be
-   tested with a unit test. The network layer is a thin shell around it.
-2. **The server is authoritative, always.** The client renders state and sends
-   intentions. It never computes the result of an action it can avoid
-   computing, and it never sends something the server blindly trusts.
-3. **Every feature earns its concept.** No "now we learn WebSockets" chapter.
-   A gameplay problem appears, and the technology is the fix. Phase 4 exists
-   because polling makes the map feel dead, not because sockets are on a
-   syllabus.
-4. **Deterministic by default.** Map generation is seeded; combat is
-   arithmetic, not dice. Students can write exact assertions and replay any
-   game from its event log. Randomness is a later, deliberate feature flag.
-5. **One protocol, many transports.** The same command and event types travel
-   over REST, WebSockets, TCP frames and UDP datagrams. Transport changes
-   should never change game semantics.
+## Changing the design
 
-## Reading order for whoever is running the course
+- A rule change edits 01 and its resolved-decisions table, then checks 02 and 05 for stale references.
+- A phase change edits 02, then checks the phase list in the root README and the pace table in 04.
+- A client decision edits 05, then checks the stack section in the root README.
+- Do not create a new document unless it has a unique purpose.
+- When a decision is still open, keep it in 01's open questions rather than starting a new file.
 
-1. Read the mechanics doc end-to-end once, without worrying about code.
-2. Read the phase doc and mark the cut line for the length of your course
-   (there is a suggested 6-week and 12-week path in the teaching notes).
-3. Skim the architecture doc before Phase 0 so the folder layout is in place.
-4. Keep the teaching notes open during sessions.
+## Keeping the pack honest
 
-## Status
+- Numbers must agree across documents: players, board size, rounds, action points, costs, caps, and victory conditions.
+- Every relative link must resolve.
+- A summary may repeat a rule only if it links back to 01 as the authority.
+- Tables and code fences must stay balanced.
+- Prefer deleting a stale paragraph over correcting it in place.
 
-- [x] Design pass: mechanics, phases, architecture, client plan
-- [x] Client shell prototype: ANSI welcome, menu and grid (no server or rules engine)
-- [ ] Phase 0: rules engine, pure renderer, tests — **next**
-- [ ] Phase 1: REST server and custom ANSI terminal client
-
-There is no rules engine or working server yet; `terminal_territories/server/`
-is still empty scaffolding.
-
-Numbers in the mechanics doc are a **starting point**, not a sacred text. Phase
-0 includes a balance simulation so they can be tuned before anyone plays a real
-game.
+Implementation notes and build checklists belong with the code, not here. Code-specific documentation is a separate, later pass once there is something to describe.

@@ -1,217 +1,75 @@
 # Terminal Territories
 
-*A multiplayer terminal-based strategy game designed to teach networking, APIs, data modelling, concurrency, and distributed systems concepts through incremental development.*
+A multiplayer, turn-based territory game built as a personal learning project for networking, APIs, concurrency, and distributed systems.
 
-## The Elevator Pitch
+## What it is
 
-Players connect to a central server and compete to control territory on a shared map.
+Two to four players share a 12 × 8 board, each starting with one capital and a small budget. Every turn gives you 3 action points and a resource budget to spend on Expand, Fortify, or Attack. You win by being the last player standing, or by holding the highest territory percentage after 20 rounds.
 
-The primary client lives in a terminal window; the final real-time mode adds a Pygame window.
-
-At first it's a simple turn-based game using a REST API. As the project grows, the networking becomes increasingly real-time until juniors are dealing with sockets, server authority, UDP updates, prediction, and synchronisation.
-
-The clever part is that every new programming concept naturally emerges from a game feature.
-
----
-
-# Teaching Goals
-
-Rather than teaching technologies directly:
-
-> "Today we're learning Flask."
-
-You teach through problems:
-
-> "Players keep overwriting each other's moves. How do we fix it?"
-
-Which leads naturally to:
-
-- REST APIs
-- JSON
-- Client/server architecture
-- Authentication
-- State machines
-- Database persistence
-- Threading
-- Async programming
-- TCP sockets
-- UDP networking
-- Event processing
-- Distributed systems concepts
-- Cheat prevention
-
----
-
-# Core Gameplay
-
-The world is a rectangular grid.
+The canonical rules are in [01 — Game design](planning/01-game-mechanics.md).
 
 ```text
-+----------------+
-| A A . . B B B |
-| A A . . B B B |
-| A . . C C B B |
-| . . C C C C . |
-| D D D C E E E |
-| D D D . E E E |
-+----------------+
+A A . . . . B B B B . .
+A A . . . . B B B B . .
+A . . C C C B B B . . .
+. . C C C C C . . . . .
 ```
 
-Each letter represents territory ownership.
+Each letter is a player's territory; a dot is neutral land. Terrain changes what expansion costs and how well a tile defends, and a capital is the one tile that can grow past the normal strength cap.
 
-Each player starts with:
+## Why this project
 
-- One capital tile
-- Limited resources
-- Limited actions per turn
+Every technology in the stack arrives as the answer to a gameplay problem:
 
-Goal:
+- Polling makes the map feel dead, so state moves to push updates.
+- Two players overwrite each other's moves, so the server becomes authoritative and actions are serialised.
+- A command vanishes on a lossy link, so the protocol gains acknowledgement, sequencing, and retry.
+- A restart wipes the match, so persistence and a storage boundary appear.
+- One server cannot carry chat, auth, and rankings, so the system splits into services.
 
-- Control the highest percentage of the map after N turns.
-- Or eliminate all opponents.
+That ordering is the point. The rules stay fixed while the transport, storage, and process topology change around them.
 
----
+## Design rules
 
-# Territories
+- The rules engine is pure and knows nothing about the network.
+- The server is authoritative; clients send intentions, not outcomes.
+- Every feature earns its technology; no topic is added just to tick a box.
+- Determinism first: seeded maps and arithmetic combat make replays and exact tests possible.
 
-```json
-{
-  "owner": "alex",
-  "strength": 5,
-  "resources": 20,
-  "terrain": "plains"
-}
-```
+## The path
 
----
+| Phase | Focus |
+| --- | --- |
+| 0 | Rules engine and hot-seat play |
+| 1 | REST API and the first terminal client |
+| 2 | Persistence across restarts |
+| 3 | Authentication, server authority, fog of war |
+| 4 | Push updates over WebSockets |
+| 5 | Alliances and diplomacy |
+| 6 | A custom TCP protocol |
+| 7 | Real-time UDP battlefield |
+| 8 | Economy layer |
+| 9 | Bot players |
+| 10 | Distributed services |
 
-# Basic Actions
+Each phase ends with something playable. The full breakdown, dependencies, and outcomes are in [02 — Development phases](planning/02-development-phases.md).
 
-## Expand
-Claim an adjacent unowned tile.
+## Stack
 
-## Fortify
-Increase defensive strength.
-
-## Attack
-Attack adjacent enemy territory.
-
----
-
-# Development Roadmap
-
-## Version 1: REST API
-
-Endpoints:
-
-```http
-GET /map
-GET /player
-POST /move
-POST /attack
-```
-
-Concepts:
-
-- HTTP
-- REST
-- JSON
-- Validation
-
-## Version 2: Persistence
-
-Add a database.
-
-Concepts:
-
-- SQL
-- ORM usage
-- Data modelling
-
-## Version 3: Fog of War
-
-Server controls visibility.
-
-Concepts:
-
-- Server authority
-- Security
-- Data filtering
-
-## Version 4: Real-Time Updates
-
-Move from polling to WebSockets.
-
-## Version 5: Alliances
-
-Add diplomacy, trading and shared vision.
-
-## Version 6: TCP Rewrite
-
-Replace REST with a custom TCP protocol.
-
-## Version 7: UDP Battlefield Mode
-
-Teach:
-
-- Packet loss
-- Reliability
-- Sequence numbers
-- Reconciliation
-
-## Version 8: Economy Layer
-
-Resource-producing terrain and simulation loops.
-
-## Version 9: AI Players
-
-Introduce bot opponents and decision-making algorithms.
-
-## Version 10: Distributed Architecture
-
-Split into:
-
-- Game Server
-- Auth Server
-- Chat Server
-- Leaderboard Server
-
----
-
-# Terminal UI
-
-```text
-+------------------------------------+
-| Terminal Territories               |
-+------------------------------------+
-| Map                                |
-|                                    |
-| A A A . B B                        |
-| A A . . B B                        |
-| A . . C C C                        |
-|                                    |
-+------------------------------------+
-| Resources: 42                      |
-| Territory: 12                      |
-| Commands:                          |
-| [E]xpand [A]ttack [F]ortify        |
-+------------------------------------+
-```
-
-Suggested stack:
-
-- Python
-- FastAPI
+- Python 3.12+ and FastAPI
 - SQLite
-- Custom ANSI terminal client
-- Pygame (Phase 7 UDP visual client)
-- Textual (optional prototype only)
-- WebSockets
-- TCP sockets
-- UDP combat mode
+- WebSockets, TCP, and UDP
+- A custom ANSI terminal client
+- Pygame, only for the final real-time mode
 
----
+## Docs
 
-# Why It Works
+[planning/README.md](planning/README.md) maps the design pack.
 
-The biggest strength of Terminal Territories is that every engineering problem emerges naturally from gameplay. Instead of building another CRUD application, junior developers are motivated by a multiplayer game while learning many of the skills used in modern backend and distributed systems development.
+- [01 — Game design](planning/01-game-mechanics.md): canonical rules, costs, formulas, edge cases, and scoring.
+- [02 — Development phases](planning/02-development-phases.md): how the technology progresses, one gameplay problem at a time.
+- [03 — Architecture](planning/03-architecture.md): layer boundaries and the invariants they protect.
+- [04 — Learning notes](planning/04-learning-notes.md): the personal learning loop behind each phase.
+- [05 — Client plan](planning/05-client-plan.md): terminal-first rendering and the switch to Pygame for real-time play.
+
+The docs are design specs. They describe problems, constraints, and decisions, not the current code.

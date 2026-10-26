@@ -17,14 +17,22 @@ def _get_title_bar():
     """
 
 
-def get_welcome_screen():
+def _format_grid() -> str:
+    return "*------------*\n"
+
+
+def _get_separator() -> str:
+    return "*--------------------------------------------------------*"
+
+
+def get_welcome_screen() -> str:
     return """Press F to continue....
 
 Copyright: Me
     """
 
 
-def get_main_menu():
+def get_main_menu() -> str:
     return """Main Menu
 1. Join Game
 2. Create Game
@@ -34,9 +42,9 @@ Press number to enter option
 
 
 def get_grid(grid: Grid, player_1: Player, player_2: Player) -> str:
-    grid_string = ""
+    grid_string = _format_grid()
     for y, row in enumerate(grid):
-        row_string = ""
+        row_string = "|"
         for x, cell in enumerate(row):
             # Render Player
             if player_1.x == x and player_1.y == y:
@@ -52,7 +60,8 @@ def get_grid(grid: Grid, player_1: Player, player_2: Player) -> str:
                     # Index debug
                     # row_string += f"({x}{y}),"
 
-        grid_string += row_string + "\n"
+        grid_string += row_string + "|" + "\n"
+    grid_string += _format_grid()
     return grid_string
 
 
@@ -75,7 +84,10 @@ def draw_game(ui: str, player: Player | None = None):
     _draw(_get_title_bar())
     _draw(ui)
     if player is not None:
+        # Draw player data here later
+        _draw(_get_separator())
         _draw(player.controls.value)
+        _draw(_get_separator())
 
 
 def _clear():

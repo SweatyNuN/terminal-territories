@@ -21,6 +21,7 @@ class Player:
     letter: str
     x: int
     y: int
+    resources: int = 0
     action: Actions = Actions.MOVE
     controls: Controls = Controls.MOVE
 

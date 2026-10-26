@@ -1,66 +1,54 @@
-# Game Mechanics
+# Terminal Territories — Game Design
 
-Version tags like **(v5)** mean "introduced in version 5". Version 1 rules are
-the complete core; later rules are additive and should not invalidate earlier
-tests.
+The canonical, implementation-independent rules of the game. For how the game is
+built, see [02-development-phases.md](02-development-phases.md).
 
 ---
 
-## 1. Design pillars
+## 1. Quick reference
 
-| Pillar | Consequence for the rules |
+| Setting | Value |
 | --- | --- |
-| Every action is a trade-off | Two currencies, AP for tempo and resources for strength, so "expand everywhere" is never free. |
-| Board state is legible | Small map, one number per tile, integer arithmetic the player can do in their head. |
-| Short games, fast feedback | 15–20 rounds, hard round limit, no infinite stalemates. |
-| Deterministic | No dice. Attack outcomes are a function of committed strength, garrison and terrain. |
-| The server knows best | Visibility, legality and turn order are computed server-side from Phase 3 onward. |
+| Players | 2–4, one capital each |
+| Board | 12 × 8 (96 tiles), 4-neighbour adjacency |
+| Game length | 20 rounds |
+| Starting resources | 10; no income in round 1 |
+| Action points | 3 per turn; unspent AP is lost |
+| Expand | 1 AP + 2 / 3 / 3 / 4 resources (plains / forest / hills / ruins) |
+| Fortify | 1 AP + 2 resources; +1 strength |
+| Attack | 1 AP + `S` resources; commit `S` strength |
+| End turn | free |
+| Victory | last player standing, or highest territory % after round 20 |
+
+A tile's **strength** is its garrison: the number used to defend, attack, and fortify.
 
 ---
 
-## 2. The board
+## 2. Board and terrain
 
-- Rectangular grid, default **12 × 8 = 96 tiles** (v1). Suggested later sizes:
-  `16 × 10` for 4 players, `24 × 16` for the UDP battlefield mode.
-- Coordinates are `(x, y)` with `x` = column, `y` = row, origin at the
-  **top-left**. Row 0 is the top row. This convention is used in JSON, in the
-  renderer, and in test fixtures — one convention, no exceptions.
-- Adjacency is **4-directional** (up, down, left, right). No diagonals.
-- Unowned land tiles are **neutral** and can be claimed by anyone adjacent.
+- A rectangular grid, **12 × 8 = 96 tiles** by default.
+- Coordinates are `(x, y)`: `x` is the column, `y` is the row, and the origin
+  `(0, 0)` is the **top-left**. Row 0 is the top row.
+- Adjacency is **4-directional** (up, down, left, right). Diagonals do not count.
+- Unowned land is **neutral** and can be claimed by anyone adjacent.
 - Water is never owned and cannot be entered or attacked across.
-- Map generation uses a stored `seed` so a game can be regenerated exactly.
+- Map generation uses a stored seed, so a game can be regenerated exactly.
 
-### 2.1 Terrain
+| Terrain | Passable | Expand | Income | Defense | Vision | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Plains | yes | 2 | 1 | +0 | 2 | Default terrain |
+| Forest | yes | 3 | 1 | +1 | 2 | Cheap cover, poor economy |
+| Hills | yes | 3 | 2 | +2 | 3 | Best income and defense |
+| Ruins | yes | 4 | 1 (v8) | +1 | 2 | 15 resources once on claim, v8 only |
+| Water | no | — | 0 | — | 0 | Blocks adjacency |
 
-| Terrain | Char | Passable | Expand cost | Income | Defense | Vision | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Plains | `.` | yes | 2 | 1 | +0 | 2 | Default; capital tiles are plains. |
-| Forest | `f` | yes | 3 | 1 | +1 | 2 | Cheap cover, poor economy. |
-| Hills | `h` | yes | 3 | 2 | +2 | 3 | Best income and defense; slow to take. |
-| Ruins | `r` | yes | 4 | 0 | +1 | 2 | One-time 15 resources on claim (v8 only). |
-| Water | `~` | no | — | 0 | — | 0 | Impassable, blocks adjacency. |
+A **capital is not a terrain**. A capital tile yields **3** income (it replaces
+the terrain yield) and adds **+2 defense**. Its vision is 3 and its strength cap
+is 8. Capital status belongs to the player, not the ground.
 
-Suggested distribution for a 12 × 8 map: ~12% water, ~20% forest, ~12% hills,
-the rest plains. Each capital is guaranteed a ring of two passable, land-only
-tiles in every direction so no player is boxed in at spawn.
-
-### 2.2 Tiles
-
-```json
-{
-  "x": 3,
-  "y": 2,
-  "terrain": "plains",
-  "owner": "alex",
-  "strength": 2
-}
-```
-
-- `owner` is `null` for neutral tiles.
-- `strength` is the garrison: 0 for neutral, 1–5 for owned tiles, 1–8 for
-  capitals.
-- `captured_round` is internal bookkeeping (not shown to clients) and is used
-  to block newly captured tiles from acting on the same turn.
+Suggested mix: ~12% water, ~20% forest, ~12% hills, rest plains. Capitals and
+their four neighbours are always land, and all capitals lie in one connected
+passable-land component.
 
 ---
 
@@ -68,99 +56,61 @@ tiles in every direction so no player is boxed in at spawn.
 
 | Setting | Value |
 | --- | --- |
-| Players | 2–4, one capital each |
+| Capital | exactly one per player, starting strength 3, on plains |
 | Starting resources | 10 |
-| Starting capital | strength 3, terrain plains |
-| Action points per turn | 3 (unspent AP does **not** carry over) |
-| Resources | carry over; no cap in v1 (tuning candidate) |
-| Default game length | 20 rounds |
+| Action points | 3 per turn |
+| Resources | carry over between turns; no cap |
+| Turn order | fixed join order, never rotated |
+| Randomness | none in combat; only seeded map generation |
 
-Player identity in v1 is just a display name. Real authentication arrives in
-v3; until then the server trusts the name, and the code should say so
-explicitly so the Phase 3 security lesson lands.
+Capital placement: one per quadrant. Two players use opposite quadrants, three
+use three of the four, four use all four. Capitals are at least **5 tiles apart
+by Manhattan distance**, have all four neighbours on land, and share one
+connected passable-land component.
 
-Capital placement: one per quadrant, e.g. `(2,2)`, `(9,2)`, `(2,5)`, `(9,5)`
-on a 12 × 8 board. Validate that capitals are on passable land and at least 5
-tiles apart (Manhattan distance).
+Play proceeds in join order starting with the first living seat; eliminated
+players are skipped. There is no dice roll and no random seating. A round ends
+after every living player has taken one turn.
 
 ---
 
 ## 4. Turn structure
 
-The game is **sequential**: only one player may act at a time, enforced by the
-server.
+**Start of turn.** Collect income from your owned tiles in round 2 and later.
+Reset AP to 3. Unspent AP from your previous turn is gone.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Lobby
-    Lobby --> Active: start with 2+ players
-    Active --> Active: action (or action rejected)
-    Active --> Active: end turn: next player, income, AP reset
-    Active --> Finished: one player remains
-    Active --> Finished: round limit reached
-    Finished --> [*]
-```
+**Act.** Spend AP and resources in any order. Every action validates fully before
+anything is deducted, so a rejected action changes nothing. You may act until AP
+runs out or you choose to stop.
 
-At the **start of your turn** you:
+**End turn.** Free and always legal on your turn, even with AP remaining.
 
-1. Collect income from all tiles you own (see §5).
-2. Reset AP to 3.
-3. See the current state.
+If you capture a tile this turn, that tile is **newly captured** and cannot act
+until your next turn: it cannot be fortified and cannot be an attack source.
+Expand has its own eligible-neighbour rule (§5.1).
 
-During your turn you may spend AP and resources in any order. During your turn
-you may **end turn** at any time, even with AP remaining.
-
-After the last player in the order ends their turn, the round counter
-increments and turn order rotates by one player each round so the same player
-does not always move first.
-
-**Turn ownership is enforced.** An action from the wrong player is rejected
-with `NOT_YOUR_TURN`. An action after the game ends is rejected with
-`GAME_FINISHED`.
-
-### 4.1 Legality checklist
-
-Every action is validated in this order and stops at the first failure. This
-ordering is itself a lesson in writing predictable validation layers.
-
-1. Game exists and is `Active`.
-2. Request is authenticated (v3+) and the player is in this game.
-3. It is this player's turn.
-4. The action type is known and its payload is well-formed.
-5. The player has enough AP.
-6. The player has enough resources.
-7. Tile coordinates are in bounds.
-8. Source tile is owned by the player.
-9. Target tile satisfies the action's adjacency/ownership/terrain rules.
-10. Any per-turn flags are clear (`captured_round`, attacked-this-turn limits).
+Victory is checked after every action and at the end of every turn.
 
 ---
 
-## 5. Economy (v1 baseline)
-
-Income is collected at the start of your turn:
+## 5. Economy
 
 ```
-income = sum(terrain_income[tile.terrain] for tile in owned_tiles)
+income = sum of tile income for every tile you own
 ```
 
-- A capital tile yields **3** (it replaces the base yield, not adds to it).
-- Every other owned tile yields its terrain income.
+- A capital yields **3**, replacing the terrain yield rather than adding to it.
+- Other owned tiles yield their terrain income: plains 1, forest 1, hills 2,
+  ruins 1 after claim (v8).
+- A **0-strength owned tile still earns income** and still counts as territory.
 - Water yields nothing and is never owned.
-- Income has no randomness and no upkeep in v1.
+- There is **no upkeep in v1**.
 
-Example: capital + 2 plains + 1 forest + 1 hills = `3 + 1 + 1 + 1 + 2 = 8`
-resources per turn.
+Example: capital + 2 plains + 1 forest + 1 hills yields
+`3 + 1 + 1 + 1 + 2 = 8` resources per turn.
 
-### 5.1 Costs at a glance (v1)
-
-| Action | AP | Resources | Target |
-| --- | --- | --- | --- |
-| Expand | 1 | 2 / 3 / 3 (plains / forest / hills) | Adjacent neutral land |
-| Fortify | 1 | 2 | Owned tile, below strength cap |
-| Attack | 1 | `S` (the strength you commit) | Adjacent enemy tile |
-| End turn | 0 | 0 | — |
-| Transfer (v5) | 1 | amount sent | Allied player |
+There is **no income in round 1**. The starting 10 resources are the opening
+budget.
 
 ---
 
@@ -170,305 +120,202 @@ resources per turn.
 
 Claim one adjacent neutral **land** tile.
 
-- Cost: 1 AP + terrain expand cost (plains 2, forest 3, hills 3, ruins 4).
-- The new tile becomes yours with `strength = 1` and
-  `captured_round = current_round`.
-- The target must be 4-adjacent to at least one tile you own. There is no
-  "source" tile and no strength is moved; any owned neighbour will do.
-- Newly captured tiles are **not** eligible to act (expand, fortify, attack)
-  during the same turn. This prevents a single turn from snowballing halfway
-  across the map and is the reason `captured_round` exists.
-- Expanding into water or into an owned tile is `TARGET_NOT_CLAIMABLE`.
+- Cost: 1 AP + the terrain expand cost (plains 2, forest 3, hills 3, ruins 4).
+- The new tile becomes yours with **strength 1** and is newly captured.
+- The target must be 4-adjacent to a tile you own that was **not captured this
+  turn**. A tile captured earlier this turn does not qualify, so expansion
+  cannot chain through fresh conquests.
+- Expand has no source tile and moves no strength, so any eligible owned
+  neighbour works, including a 0-strength one.
+- The target must be neutral land; expanding into water or an owned tile is
+  invalid.
 
 ### 6.2 Fortify
 
 Increase the garrison of an owned tile.
 
 - Cost: 1 AP + 2 resources.
-- Effect: `strength += 1`, up to the cap (5 normal, 8 capital).
-- A newly captured tile may be fortified on a later turn, not the turn it was
-  taken.
-- Fortifying at the cap is `TILE_AT_MAX_STRENGTH` and costs nothing (the action
-  is rejected before resources are deducted).
+- Effect: **+1 strength**, up to the cap: **5** for a normal tile, **8** for a
+  capital.
+- The target must be yours and **not newly captured**. A 0-strength owned tile
+  may be fortified.
+- Fortifying at the cap is rejected and costs nothing.
 
 ### 6.3 Attack
 
-Attack an adjacent enemy tile by committing strength from one of your tiles.
+Attack an adjacent enemy tile by committing strength from one of your tiles. You
+choose the **source**, the **target**, and **`S`**, the strength committed.
 
-- Cost: 1 AP + `S` resources, where `S` is the committed strength.
-- Constraint: `1 ≤ S ≤ source.strength`. The committed strength is **removed
-  from the source tile immediately**, whether the attack succeeds or fails.
-- The source tile must not have been captured this turn.
-- You may attack the same target multiple times in one turn if you have the AP,
-  resources and strength to do so.
+- Cost: 1 AP + `S` resources.
+- `1 ≤ S ≤ source strength`. The source must be owned, not newly captured, and
+  have at least 1 strength.
+- Remove `S` from the source **immediately**, whether the attack succeeds or
+  fails. A source reduced to 0 stays yours, still earns income, and cannot
+  attack again until fortified.
+- You may attack the same target more than once in a turn if you can pay for it.
 
 Resolution:
 
 ```
-attacker_power = S
-defender_power = target.strength
-               + terrain_defense[target.terrain]
-               + (2 if target is a capital else 0)
+attacker power = S
+defender power = target strength + terrain defense + 2 if the target is a capital
 ```
 
 | Condition | Result |
 | --- | --- |
-| `attacker_power > defender_power` | **Capture.** Target owner becomes the attacker. `target.strength = attacker_power - defender_power` (minimum 1). |
-| `attacker_power <= defender_power` | **Repelled.** Target keeps its owner. `target.strength = max(1, target.strength - max(1, floor(S / 2)))`. |
+| `S > defender power` | **Capture.** The target becomes yours with garrison `max(1, S - defender power)` and is newly captured. |
+| `S <= defender power` | **Repelled.** The owner is unchanged. If target strength is above 0, it loses `max(1, floor(S / 2))` but never drops below 1. If it is 0, it stays 0. |
 
-- The source tile loses `S` strength in both cases.
-- A captured tile is marked `captured_round = current_round`, exactly like an
-  expanded tile, and cannot act until your next turn.
-- A capital cannot be captured by an attack that only ties its defense; it must
-  be exceeded. This is why a full-strength capital needs a committed force
-  above `strength + 2`.
-- Attacks against allied tiles are rejected with `ALLIANCE_ACTIVE` (v5).
-- Attacks against neutral tiles are invalid — use Expand.
+A tie is a repel, and a repel never increases strength. Attacking a neutral tile
+is invalid; use Expand. Attacking an ally is invalid while the alliance is active.
 
-#### Worked examples
+**Worked attacks.** Assume plains unless stated.
 
-Assume plains unless stated.
-
-| Source strength | Committed `S` | Target | Result |
+| Source | `S` | Target | Result |
 | --- | --- | --- | --- |
-| 4 | 3 | enemy strength 2, forest (+1) | `3 <= 3`: repelled. Defender drops to `max(1, 2-1)=1`. Source becomes 1. Cost 3 resources. |
-| 5 | 4 | enemy strength 2, forest (+1) | `4 > 3`: captured, garrison `4-3=1`. Source becomes 1. Cost 4. |
-| 5 | 5 | enemy capital, strength 3 (+2) | `5 <= 5`: repelled. Capital drops to `3-2=1`. |
-| 5 | 5 | enemy capital, strength 1 (+2) | `5 > 3`: captured, garrison 2. Game may end. |
+| 4 | 3 | strength 2, forest (defense 3) | Tie: repelled. Target 2 → 1. Source 4 → 1. Cost 3. |
+| 5 | 4 | strength 2, forest (defense 3) | `4 > 3`: captured with garrison 1. Source 5 → 1. Cost 4. |
+| 1 | 1 | strength 0, forest (defense 1) | Tie: repelled. Target **stays 0**. Source 1 → 0. Cost 1. |
 
-The lesson in the table: committing your whole garrison is efficient but leaves
-the source naked, and chipping a capital down before the final blow is cheaper
-than one giant assault.
+**Chipping a capital.** A full-strength capital on plains has defense
+`5 + 2 = 7`, while a normal tile caps at 5 strength, so it must be chipped first.
+
+| Step | Attack | Math | Result |
+| --- | --- | --- | --- |
+| 1 | strength-4 tile commits `S=3` | `3 <= 7` | Repelled. Capital 5 → 4. Source 4 → 1. |
+| 2 | strength-5 tile commits `S=4` | `4 <= 6` | Repelled. Capital 4 → 2. Source 5 → 1. |
+| 3 | strength-5 tile commits `S=5` | `5 > 4` | Captured with garrison 1. Source 5 → 0. |
 
 ### 6.4 End turn
 
-- Free, always legal on your own turn.
-- Applies the next player's start-of-turn effects (income, AP reset) and
-  advances the turn pointer, or ends the round.
+Free. Advance to the next living player in join order. After the last living
+player acts, the round counter increments and the next round starts with the
+first living player in join order. The starting seat is **never rotated**.
 
-### 6.5 Surrender (v1, optional)
+### 6.5 Surrender
 
-A player may leave a game. Their tiles become neutral with strength 1, their
-capital becomes neutral with strength 3, and they are removed from turn order.
-This exists mainly so integration tests and classroom demos do not leave zombie
-games behind.
+On your turn you may leave the game. All your tiles, including your capital,
+become neutral with strength 0. You are eliminated and removed from turn order.
+Your resources are discarded, not transferred. Any alliances involving you
+dissolve.
 
 ---
 
-## 7. Capture, elimination and victory
+## 7. Capture, elimination, and victory
 
 ### 7.1 Capturing a capital
 
-When a player's capital is captured:
+1. The captured capital becomes a **normal owned tile for the attacker**. The
+   attacker does not gain a second capital; their original capital remains
+   their only one.
+2. The defeated player is **eliminated** and removed from the turn order.
+3. All the defeated player's other tiles become **neutral with strength 0**.
+4. Resources are **not transferred**; they are discarded. Any alliance
+   involving the defeated player dissolves.
 
-1. The capital transfers to the attacker (normal capture rules).
-2. The defeated player is **eliminated** and removed from turn order.
-3. All of the defeated player's other tiles become **neutral with strength 1**.
+### 7.2 Victory and scoring
 
-Step 3 is deliberate anti-snowball design: conquest should cost the attacker
-resources and leave work to do, not hand them a second empire. It is also a good
-discussion prompt — what happens if you remove it?
-
-### 7.2 Victory conditions
-
-Checked immediately after every action and at the end of every turn:
-
-1. **Domination:** only one player remains → that player wins.
-2. **Round limit:** after the last turn of round 20, the player with the
-   highest `territory_percentage` wins.
+1. **Domination:** only one non-eliminated player remains; that player wins.
+2. **Round limit:** after the last turn of round 20, the highest territory
+   percentage wins.
 
 ```
-territory_percentage = owned_land_tiles / total_land_tiles * 100
+territory percentage = owned land tiles / total land tiles × 100
 ```
 
-Tie-breakers, in order: total garrison strength, resources, then the player
-earliest in the initial turn order.
+A 0-strength owned tile still counts. Water is not land. Eliminated players own
+no tiles and score 0.
 
-A player with zero tiles but a living capital is impossible; a player with a
-capital but no other tiles is alive and can still expand.
+Tie-breakers, in order: total garrison strength, then resources, then the
+earliest position in the initial join order.
 
-### 7.3 Scoring output
-
-At game end the server returns a standings array with `territory_percentage`,
-`tiles`, `strength`, `resources`, `eliminated` and `rank`. Later leaderboard
-work consumes this same structure.
+There is **no shared victory**. At the round limit, allies are ranked against
+each other like anyone else.
 
 ---
 
-## 8. Fog of war (v3)
+## 8. Later layers
 
-Visibility is computed per requesting player, server-side. The server never
-sends hidden tile data — filtering, not client-side hiding.
+These add to the core; the rules above still apply, with the additions below.
 
-| Tile state | What the client receives |
-| --- | --- |
-| `visible` | Full tile: terrain, owner, strength. |
-| `remembered` | Terrain, plus the owner/strength last seen and `last_seen_round`. Marked `stale: true`. |
-| `unknown` | Terrain only if permanently known (it is), otherwise a blank tile. Never owner or strength. |
+### Fog of war (v3)
 
-Vision radius:
+- Tiles are *visible* (full data), *remembered* (terrain plus stale owner and
+  strength), or *unknown* (a blank cell).
+- Vision is 2 for owned tiles and 3 for hills and capitals. Shared vision arrives with alliances (v5).
+- Terrain is remembered permanently; owner and strength are not.
 
-- Owned tiles: 2 (Manhattan distance).
-- Capital tile: 3.
-- Owned hills tile: 3 (does not stack; take the max).
-- Allied tiles: shared vision while the alliance is active (v5).
+### Alliances (v5)
 
-Memory rules:
+- A player proposes; the target accepts or declines. Proposals expire after 2
+  rounds.
+- Allies cannot attack each other, share vision, and may transfer up to 10
+  resources once per round for 1 AP.
+- Breaking is unilateral and instant, with a 3-round re-ally cooldown.
+- There is no shared victory.
 
-- Terrain is revealed permanently once seen — the map does not change shape.
-- Owner/strength memory updates only while visible and is stale otherwise.
-- A remembered tile that becomes visible again refreshes immediately.
+### Real-time mode (v7)
 
-This gives the classic "scouting matters" feel and creates the Phase 3 lesson:
-the client is no longer allowed to know everything, so **the server must be the
-only source of truth**.
+- AP regenerates 1 every 2 seconds, cap 3; income arrives every 10 seconds.
+- There is no turn order; every player may act at once.
+- A match ends after 10 minutes or when someone reaches 60% territory.
 
----
+### Economy layer (v8)
 
-## 9. Alliances and trade (v5)
+- Upkeep is `floor(owned tiles / 6)` resources per turn.
+- Ruins pay 15 once on claim, then yield 1 per turn.
+- A trade bonus gives +1 income per allied capital after 3 rounds.
+- Net income never falls below 0.
 
-### 9.1 Proposing
+### Bots (v9)
 
-- `POST /alliances/propose` with a target player. Proposals are free and expire
-  after 2 rounds.
-- The target accepts or declines. An accepted alliance is symmetric and
-  immediately active.
-
-### 9.2 Effects of an active alliance
-
-- Attacks between the two players are rejected (`ALLIANCE_ACTIVE`).
-- Vision is shared: each player sees tiles visible to the other.
-- Resource transfers are allowed: one transfer per round per alliance, up to
-  10 resources, costing the sender 1 AP. The server validates the balance.
-- Alliance membership is visible to all players (no secret treaties), but shared
-  vision is not retroactive — you do not learn the ally's history.
-
-### 9.3 Breaking
-
-- Breaking is unilateral and instant.
-- The breaker cannot re-ally with the same player for **3 rounds**
-  (`ALLIANCE_COOLDOWN`).
-- Attacks become legal on the next action, not the same request.
-- Reputation counter (`reputation -= 1` per break) is tracked for the
-  leaderboard and for AI behaviour in v9. It has no direct economic penalty in
-  v5.
-
-Alliances have no maximum size. A 3-player alliance against the leader is a
-valid and interesting outcome; the round limit keeps it from stalling the game.
+- Bots use the same actions and protocol as players.
+- Personalities are preference weights, not separate rules.
 
 ---
 
-## 10. Real-time mode (v7)
+## 9. Resolved decisions
 
-A second **game mode** that reuses every rule above. This is not a second game.
-
-| Turn-based (v1–v6) | Real-time (v7+) |
-| --- | --- |
-| AP resets to 3 at the start of your turn | AP regenerates 1 every 2 seconds, cap 3 |
-| Income at start of turn | Income every 10 seconds |
-| Actions resolve instantly | Actions resolve instantly |
-| Turn order enforced | No turn order; all players may act |
-| 20 rounds | 10-minute match or first to 60% territory |
-
-Server authority and validation are unchanged. Only the scheduling of
-resources changes. The network carries timestamped state deltas instead of
-request/response bodies.
-
-Because combat is deterministic and instant, the interesting teaching material
-is in delivery: packet loss, ordering, duplicate commands and client
-prediction. The client may render an optimistic result, but it must reconcile
-with the next authoritative snapshot and roll back on mismatch.
+| # | Question | Decision |
+| --- | --- | --- |
+| A | Does a captured capital become a second capital? | No. It becomes a normal owned tile for the attacker; each player has exactly one capital. |
+| B | What strength does a neutral tile have? | Always 0, including tiles abandoned by surrender or elimination. |
+| C | Can an owned tile reach 0 strength? | Yes. It still counts for territory and income, can be fortified, cannot attack, and can still be Expand's eligible neighbour. |
+| D | Is there income in round 1? | No. Income starts in round 2; the opening budget is 10. |
+| E | Can Expand chain through newly captured tiles? | No. The neighbour must have been owned before this turn. |
+| F | Is there a shared victory for allies? | No. At the round limit, allies are ranked against each other. |
+| G | What does fog "unknown" show? | A blank cell: no terrain, owner, or strength. Terrain is known permanently once seen; owner and strength are not. |
+| H | Do ruins produce income? | 15 resources once on claim, then 1 per turn (v8). v1 maps contain no ruins. |
+| I | How are capitals constrained? | One per quadrant, at least 5 Manhattan apart, on plains, four land neighbours, all in one connected land component. |
+| J | Why is capital defense +2 when sources cap at 5? | Intentional. A full-strength capital must be chipped before it can fall. |
+| K | Who goes first? | Fixed join order. No dice, no random seats, no start-seat rotation. |
+| L | What does an attack choose? | Source, target, and committed strength `S`, all explicit. |
+| M | What does "newly captured" mean? | Captured during your current turn. Such a tile cannot fortify or attack this turn. |
+| N | What happens when a repel hits a 0-strength tile? | It stays 0. A repel never increases strength. |
 
 ---
 
-## 11. Economy layer (v8)
+## 10. Tuning knobs
 
-Adds depth without changing the core loop.
-
-- **Terrain yields** replace the flat table above: plains 1, forest 1, hills 2,
-  ruins 0 (plus one-time payout), capital 3.
-- **Upkeep:** `upkeep = floor(owned_tiles / 6)` resources per turn, subtracted
-  from income. Net income never goes below 0 (no debt in this version).
-- **Resource nodes:** neutral ruins grant 15 resources once when claimed, then
-  yield 1 per turn. This creates contested objectives away from the capitals.
-- **Trade routes:** an active alliance of 3+ rounds grants each member +1 income
-  per allied capital. Optional stretch.
-- Simulation tick: income and upkeep are processed by the same scheduler that
-  later drives the real-time mode, so the economy is one loop, not scattered
-  code.
-
-All values are integers. Resist floats; if you need fractional yields, use
-tenths internally and format at the edge — a good teachable moment about money
-and resources.
-
----
-
-## 12. AI opponents (v9)
-
-Bots are ordinary clients. They authenticate, read state and submit actions
-through the same protocol as humans. If the bot needs a private endpoint, the
-API is wrong.
-
-Baseline heuristic (`HeuristicBot`):
-
-| Situation | Preference |
-| --- | --- |
-| Neutral tile adjacent, cheap | Expand toward the map centre and toward the weakest neighbour |
-| Enemy tile adjacent and weakly held | Attack if `power - defense >= 1` and the source survives with ≥1 |
-| Capital threatened | Fortify capital first, then the adjacent border tile |
-| Nothing profitable | Save resources, fortify the highest-value border tile |
-
-Personalities are just weight vectors: `Turtle` (defense ×2), `Rusher`
-(expansion ×1.5, attack ×1.5), `Opportunist` (targets the current leader).
-
-Testing: run headless tournaments (same seeds, N games, round-robin) and report
-win rates. This teaches benchmarking, deterministic experiments and the danger
-of overfitting to a few seeds. Advanced students can add expectimax or MCTS
-once combat randomness is introduced behind a flag.
-
----
-
-## 13. Tuning knobs and open questions
-
-Decide these before Phase 1; record the choice in this file.
-
-| Knob | Default | Range to try | Notes |
+| Knob | Default | Range to try | Effect |
 | --- | --- | --- | --- |
-| Map size | 12 × 8 | 10 × 8 – 16 × 10 | Bigger maps favour expansion, longer games. |
-| AP per turn | 3 | 2–4 | Lower = slower, more tactical. |
-| Starting resources | 10 | 5–15 | Too high = explosive opening. |
-| Fortify cost | 2 | 1–3 | Flat cost; consider `1 + strength // 2` later. |
-| Strength caps | 5 / 8 | 4–6 / 6–10 | Lower caps make capitals takeable. |
-| Round limit | 20 | 12–30 | Must end before the class period ends. |
-| Income per tile | 1 | 1–2 | With 20+ tiles, 1/turn is already strong. |
-| Capital defense | +2 | +1–3 | +2 makes early rushes fail, by design. |
-
-Open questions for the first playtest:
-
-- Is committing the whole garrison too punishing for new players?
-- Does the 3-round alliance cooldown create enough tension, or should betrayal
-  cost resources?
-- Should eliminated players be able to spectate with full vision? (Recommended:
-  yes, and it is a useful server-permission exercise.)
-- Does the round limit produce too many ties? If so, add a sudden-death round
-  where income doubles.
+| Map size | 12 × 8 | 10 × 8 – 16 × 10 | Bigger maps favour expansion and longer games. |
+| AP per turn | 3 | 2–4 | Lower is slower and more tactical. |
+| Starting resources | 10 | 5–15 | Higher gives a more explosive opening. |
+| Fortify cost | 2 | 1–3 | Cheaper fortify favours turtling. |
+| Strength caps | 5 / 8 | 4–6 / 6–10 | Lower caps make capitals easier to take. |
+| Round limit | 20 | 12–30 | Shorter games end in more territory races. |
+| Income per tile | 1 | 1–2 | With 20+ tiles, 1 per turn is already strong. |
+| Capital defense | +2 | +1–3 | Lower values make early capital rushes viable. |
+| First-player advantage | none | Last seat +1 resource, or randomize seats once | Never rotate the start seat; it gives A, B, B, A in a 2-player game. |
 
 ---
 
-## 14. Rule changes by version
+## 11. Open playtest questions
 
-| Version | Rule changes |
-| --- | --- |
-| v1 | Core: expand, fortify, attack, end turn, elimination, round-limit scoring |
-| v2 | None (persistence only) |
-| v3 | Fog of war, per-player state filtering, authentication |
-| v4 | None (delivery changes from polling to push) |
-| v5 | Alliances, shared vision, transfers, betrayal cooldown |
-| v6 | None (transport changes to TCP) |
-| v7 | Real-time mode: AP/income timers instead of turns |
-| v8 | Upkeep, terrain yields, ruins, trade bonus |
-| v9 | None (bots use existing rules) |
-| v10 | None (deployment topology only) |
-
-Keeping rule-free versions explicitly rule-free is a feature: it proves the
-architecture separates game logic from networking.
+- Is committing the whole garrison too punishing, or is it the right tension?
+- Does the 3-round alliance cooldown create enough doubt, or should betrayal
+  also cost resources?
+- Does the round limit produce too many ties? A sudden-death round with doubled
+  income is the fallback.
+- Should eliminated players spectate with full vision?
